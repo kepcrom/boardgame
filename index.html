@@ -1,0 +1,1046 @@
+<html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/> <!--320-->
+    </head>
+<style>
+body {
+    margin:0px;
+    font-family: sans-serif;
+}
+
+button {
+    color: white;
+    background-image: linear-gradient( lightgreen, green );
+    font-size: 1.125em;
+    min-width: 20%;
+    border-color: green;
+    margin-bottom: 1em;
+}
+
+#screen {
+    position: relative;
+    width:100%;
+    height:100%;
+    display: inline-block;
+    overflow: hidden;
+    text-align: center;
+}
+
+.screen{
+    position: absolute;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    width: 100%;
+    height: 100%;
+    top: 0px;
+    left: 0px;
+    display:inline-block;
+    font-family: sans-serif;
+    overflow: hidden;
+    padding: 0px;
+}
+
+.content_box {
+    display: block;
+    overflow: hidden;
+    background-color: rgba( 255,255,255,.75 );
+    padding: 1em;
+    font-weight:400;
+
+}
+
+#board {
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    position: absolute;
+    display:inline-block;
+    overflow: hidden;
+    top: 0px;
+    left: 0px;
+    border-color: black;
+    border-style: solid;
+    background-color: rgb(160,120,105);
+}
+#player0{
+    background-image: url('flame.svg');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: fill;
+    display: inline-block;
+    position: absolute;
+}
+#dpad {
+    position: absolute;
+    display: block;
+    z-index: 1;
+}
+#dpad div {
+    margin:0px;
+    padding:0px;
+    width: 100%;
+    height:33%;
+}
+#dpad div div {
+    display:inline-block;
+    width:33%;
+    height:100%;
+    opacity: .5;
+    background-color: white !important;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    color: black !important;
+    border-color:white !important;
+    border-radius: 20%;
+    margin:0px;
+    vertical-align: top;
+}
+
+.wall {
+    background-color: black;
+    display: inline-block;
+    position: absolute;
+}
+.hit {
+    background-color: transparent;
+    background-image: url('can.svg');
+    background-repeat: no-repeat;
+    background-size: contain;
+    display: inline-block;
+    position: absolute;
+    color:white;
+}
+.hit[frame='1'] {
+    background-color: transparent;
+    background-image: url('can_explode.svg');
+    color:white;
+}
+
+.hit[frame='2'] {
+    background-color: transparent;
+    background-image: url('hotworksign2.svg');
+    background-repeat: no-repeat;
+    background-color:rgb(0,0,0);
+    background-position: center;
+    background-size: contain;
+}
+
+.hit[frame='3'] {
+    background-color: transparent;
+    background-image: url('keymap.svg');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    opacity: .7;
+    z-index: 20;
+}
+
+.torch {
+    position: absolute;
+    display: inline-block;
+    background-image: radial-gradient( circle, rgba(0,0,0,0),rgba(0,0,0,.9),rgba(0,0,0,.9),rgba(0,0,0,.9),rgba(0,0,0,.9),rgba(0,0,0,.9),rgba(0,0,0,.9),rgba(0,0,0,.9), black );
+    z-index: 100;
+}
+
+.banner {
+    position:absolute;
+    top:0px;
+    left:0px;
+    width:100%;
+    background-image: url('bg_notstarted.jpg');
+}
+
+.banner div {
+    display: inline-block;
+    padding-top: 3px;
+    width: 100%;
+    height: 100%;
+    background-color: rgba( 255,255,255,.80 );
+}
+
+</style>
+<script>
+var aspect = 36/60;
+var keystates = {};
+var current_player = 0;
+var screen_width = 0;
+var screen_height = 0;
+var score = 100;
+var move_inc = 0;
+
+var players = new Array();
+var torches = new Array();
+var boundaries = new Array();
+var hits = new Array();
+var sprites_all = new Array();
+var screens = new Array();
+var banners = new Array();
+
+const start_content = '<h3>A Mindset for Safety</h3><p>ExxonMobil Production Company (EMPC) wants to ensure that you remain safe while performing hot work activities.  It is your responsibility to follow the hot work safe practices as described in this training module.</p><p>To ensure your safety, you must take specific steps before, during, and after hot work activities to prevent flammable materials from coming into contact with flames or sources of heat.</p><p>This game represents the mindset you need to have during hot work.  Using your keyboard, move the torch through the maze without touching any of the hazardous materials.</p><button onclick="state.setState( \'game\', RUNNING )" value="start">Start</button>';
+const completed_content = '<h3>Good Work!</h3><p>During hot work activities, you must keep control over the work site and constantly watch out for unsafe conditions.</p><p>Avoiding fire is your main concern.</p><p><i>Click on the Next button to continue the module.</i></p><button onclick="state.setState(\'game\', REPLAY )">REPLAY</button>';
+const pc_instructions = '<b>Use the appropriate keys on the keyboard to move through the maze.</b>';
+const mobile_instructions = '<b>Use the direction pad to move through the maze.</b>';
+
+const NOT_STARTED = 1;
+const RUNNING = 2;
+const FINISHED = 3;
+const REPLAY = 4
+
+var audio = ( function()
+{
+    var playAudio = true;
+    var decks = {};
+
+    function _getplayer( player )
+    {
+        if( !decks[player] )
+        {
+            decks[player] = { object : new Audio() };
+        }
+        if( decks[player]['object'] ) return( decks[player]['object'] );
+        else console.log( 'unable to locate player' );
+        return false;
+    }
+
+    function _loadplayer( player, clip )
+    {
+        decks[player]['object'].setAttribute( 'src', clip );
+        decks[player]['object'].load();
+        decks[player]['clip'] = clip;
+    }
+
+    function play( player, clip )
+    {
+        if( !playAudio ) return;
+        console.log( 'play ' + player );
+        var deck = _getplayer( player );
+
+        if( decks[player]['clip'] == clip )
+        {
+            console.log( 'already played this ' + clip );
+            return;
+        }
+        _loadplayer( player, clip );
+        decks[player]['object'].muted = false;
+        if( decks[player]['object'] )
+        {
+            try
+            {
+                decks[player]['object'].play();
+                decks[player]['retrycount'] = 0;
+                clearTimeout( decks[player]['timer'] )
+            }
+            catch( e )
+            {
+                console.log( 'unable to play' );
+                if( ++decks[player]['retrycount'] < 4 )
+                {
+                    decks[player]['timer'] = setTimeout( "audio.play( \"" + player + "\", \"" + clip + "\" )", 250 );
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+    function stop( player )
+    {
+        if( !decks[player] ) return;
+        console.log( 'stopping ' + player );
+        if( decks[player]['object'] )
+        {
+            decks[player]['object'].setAttribute( 'src', '' );
+            decks[player]['clip'] = '';
+            decks[player]['object'].load();
+        }
+        return false;
+    }
+    function mute()
+    {
+        playAudio = ( !playAudio );
+    }
+    return({ 'play' : play,
+             'stop' : stop  })
+})();
+
+var state = ( function() 
+{
+    let self = {
+        'move' : false,
+        'game' : NOT_STARTED,
+    };
+
+    function setState( key, payload )
+    {
+        //console.log( 'set ' + key + ' in state to ' + payload );
+        self[key] = payload;
+    }
+
+    return({ 'setState' : setState,
+             'self' : self });
+
+})();
+
+
+function start_loop()
+{
+    add_board('floor.png');
+
+    if( 'ontouchstart' in window )
+    {
+        add_dpad( 1, 45 );
+        add_banner( mobile_instructions, RUNNING );
+    }
+    else
+    {
+        add_hit( 5, 43, 20, 14, '', 3 );
+        add_banner( pc_instructions, RUNNING );
+    }
+ 
+    add_screen('bg_notstarted.jpg', start_content, NOT_STARTED, true, '2A_450.mp3' );
+    add_screen('bg_notstarted.jpg', completed_content, FINISHED, false, '2C_450.mp3' );
+    add_player( 8, 40 );
+    add_wall(  0,  3, 1.25, 100,  0 );
+    add_wall( 14, 18, 1.25,   0, 80 );
+    add_wall( 28,  3, 1.25,   0, 14 );
+    add_wall( 28, 17, 1.25,  14,  0 );
+    add_wall( 56, 17, 1.25,  14,  0 );
+    add_wall( 56, 17, 1.25,   0, 87 );
+    add_wall( 28, 31, 1.25,  28,  0 );
+    add_wall( 28, 31, 1.25,   0, 15 );
+    add_wall( 42, 43, 1.25,   0, 67 );
+    add_wall( 70, 29, 1.25,  14,  0 );
+    add_wall( 70, 43, 1.25,   0, 57 );
+    add_wall( 84,  3, 1.25,   0, 42 );
+
+    add_hit(  1,  5, 4, 6, 'blow_hit', 0 ); // 00
+    add_hit( 13, 13, 4, 6, 'blow_hit', 0 ); // 01
+    add_hit(  2, 33, 4, 6, 'blow_hit', 0 ); // 02
+    add_hit( 24, 27, 4, 6, 'blow_hit', 0 ); // 03
+    add_hit( 30,  7, 4, 6, 'blow_hit', 0 ); // 04
+    add_hit( 42, 13, 4, 6, 'blow_hit', 0 ); // 05
+    add_hit( 51, 24, 4, 6, 'blow_hit', 0 ); // 06
+    add_hit( 55,  5, 4, 6, 'blow_hit', 0 ); // 07
+    add_hit( 70, 13, 4, 6, 'blow_hit', 0 ); // 08
+    add_hit( 80,  5, 4, 6, 'blow_hit', 0 ); // 09
+    add_hit( 66, 25, 4, 6, 'blow_hit', 0 ); // 10
+    add_hit( 58, 35, 4, 6, 'blow_hit', 0 ); // 11
+    add_hit( 70, 37, 4, 6, 'blow_hit', 0 ); // 12
+    add_hit( 80, 43, 4, 6, 'blow_hit', 0 ); // 13
+    add_hit( 94, 51, 4, 6, 'blow_hit', 0 ); // 14
+    add_hit( 88, 33, 4, 6, 'blow_hit', 0 ); // 15
+    add_hit( 58, 51, 4, 6, 'blow_hit', 0 ); // 16
+    add_hit( 51, 51, 4, 6, 'blow_hit', 0 ); // 17
+    add_hit( 41, 37, 4, 6, 'blow_hit', 0 ); // 18
+    add_hit( 29, 44, 4, 6, 'blow_hit', 0 ); // 19
+    add_hit( 86, 5, 11, 9, 'blow_congrats', 2 );
+    
+    setTimeout( update, 1000 );
+}
+
+function add_board( background )
+{
+    var screen = document.getElementById('screen');
+        screen_width = screen.clientWidth;
+        screen_height = screen.offsetHeight;
+
+    var board_width = screen_width-8;
+    var board_height = 0;
+    if( board_width * aspect > screen_height )
+    {
+        board_height = screen_height;
+        board_width = ( board_height / aspect );
+    }
+    else
+    {
+        board_height = board_width * aspect;
+    }
+
+    var board = document.createElement('DIV');
+    board.id = 'board';
+    board.style.width = board_width + 'px';
+    board.style.height = board_height + 'px';
+    board.style.backgroundImage = 'url("'+background+'")';
+    screen.appendChild(board);
+    board.style.borderWidth = get_length(1) + 'px';
+    board.style.height = (board.clientHeight - get_length(2)) + 'px';
+    board.style.width = (board.clientWidth - get_length(2)) + 'px';
+    var boundary = new Array( 0, 0, board.offsetWidth, board.offsetHeight, 0, 0, board );
+    boundaries.push( boundary );
+    sprites_all.push( boundary );
+    move_inc = ( board.offsetHeight < board.offsetWidth ) ? board.offsetWidth : board.offsetHeight;
+    move_inc *= .005;
+}
+
+function add_banner( message, state )
+{
+    var board = document.getElementById('board');
+    var banner = document.createElement('DIV');
+        banner.className = 'banner';
+        banner.innerHTML = '<div>' + message + '</div>';
+        banner.style.height = get_length(3) + 'px';
+        banner.style.fontSize = get_length(2) + 'px';
+    board.appendChild( banner );
+    banners.push( new Array( banner, state ) );
+}
+
+function add_dpad( x, y )
+{
+    var board = document.getElementById('board');
+    var max_length = ( board.offsetHeight > board.offsetWidth ) ? board.offsetHeight : board.offsetWidth;
+        max_length /= 4;
+    var dpad = document.createElement('DIV');
+        dpad.id = 'dpad';
+        dpad.style.width = max_length + 'px';
+        dpad.style.height = max_length + 'px';
+        dpad.style.left = (board.clientWidth - max_length) + 'px';
+        dpad.style.top = (board.clientHeight - max_length) + 'px';
+        dpad.style.overflow = 'hidden';
+    var dpad_row1 = document.createElement('DIV');
+    var dpad_row2 = document.createElement('DIV');
+    var dpad_row3 = document.createElement('DIV');
+    var btn_up = document.createElement('DIV');
+        btn_up.innerHTML = '';
+        btn_up.style.backgroundImage = 'url(up.svg)';
+        btn_up.addEventListener( 'touchstart', function( e ){ e.preventDefault(); e.stopPropagation(); state.setState('move', 'up' ); return false; } );
+        btn_up.addEventListener( 'touchend', function( e ){ e.preventDefault(); e.stopPropagation(); state.setState('move', '' ); return false; } );
+        //btn_up.style.width = get_length(4);
+        //btn_up.style.height = get_length(4);
+    var btn_dn = document.createElement('DIV');
+        btn_dn.innerHTML = '';
+        btn_dn.style.backgroundImage = 'url(dn.svg)';
+        btn_dn.addEventListener( 'touchstart', function( e ){ e.preventDefault(); e.stopPropagation(); state.setState('move', 'dn' ); return false; } );
+        btn_dn.addEventListener( 'touchend', function( e ){ e.preventDefault(); e.stopPropagation(); state.setState('move', '' ); return false; } );
+        //btn_dn.style.width = get_length(4);
+        //btn_dn.style.height = get_length(4);
+    var btn_lt = document.createElement('DIV');
+        btn_lt.innerHTML = '';
+        btn_lt.style.backgroundImage = 'url(lt.svg)';
+        btn_lt.addEventListener( 'touchstart', function( e ){ e.preventDefault(); e.stopPropagation(); state.setState('move', 'lt' ); return false; } );
+        btn_lt.addEventListener( 'touchend', function( e ){ e.preventDefault(); e.stopPropagation(); state.setState('move', '' ); return false; } );
+        //btn_lt.style.width = get_length(4);
+        //btn_lt.style.height = get_length(4);
+    var btn_rt = document.createElement('DIV');
+        btn_rt.innerHTML = '';
+        btn_rt.style.backgroundImage = 'url(rt.svg)';
+        btn_rt.addEventListener( 'touchstart', function( e ){ e.preventDefault(); e.stopPropagation(); state.setState('move', 'rt' ); return false; } );
+        btn_rt.addEventListener( 'touchend', function( e ){ e.preventDefault(); e.stopPropagation(); state.setState('move', '' ); return false; } );
+        //btn_rt.style.width = get_length(4);
+        //btn_rt.style.height = get_length(4);
+    var btn_00 = document.createElement('DIV');
+        btn_00.innerHTML = ' ';
+        //btn_00.style.width = get_length(4); 
+        //btn_00.style.height = get_length(4);
+        btn_00.style.opacity = 0; 
+    dpad_row1.appendChild(btn_up);
+    dpad_row2.appendChild(btn_lt);
+    dpad_row2.appendChild(btn_00);
+    dpad_row2.appendChild(btn_rt);
+    dpad_row3.appendChild(btn_dn);
+    dpad.appendChild(dpad_row1);
+    dpad.appendChild(dpad_row2);
+    dpad.appendChild(dpad_row3);
+    board.appendChild(dpad);
+}
+
+var screen_index = 200;
+
+function add_screen( background, content, mode, show, audio )
+{
+    var board = document.getElementById('board');
+        
+    var screen = document.createElement('DIV');
+    screen.id = 'screen' + screen_index++;
+    screen.className = 'screen';
+    screen.style.width = '100%';
+    screen.style.height = '100%';
+    screen.style.zIndex = screen_index;
+    screen.style.visibility = ( show ) ? 'visible' : 'hidden';
+    screen.style.backgroundImage = 'url("'+background+'")';
+    board.appendChild(screen);
+    if( content )
+    {
+        var content_box = document.createElement('DIV');
+        content_box.className = 'content_box';
+        content_box.innerHTML = content;
+        content_box.style.overflow = 'hidden';
+        content_box.style.paddingBottom = '10px';
+        content_box.style.fontSize = '20px';
+        screen.appendChild( content_box );
+        if( show )
+        {
+            fixAspectScreen( screen );
+        }
+    }
+    screens.push( new Array( screen, mode, audio ) );
+}
+
+function fixMoveInc()
+{
+    var board = document.getElementById('board');
+    move_inc = ( board.offsetHeight < board.offsetWidth ) ? board.offsetWidth : board.offsetHeight;
+    move_inc *= .01;
+}
+
+function fixAspectScreen( screen )
+{
+    if( !screen ) { return; }
+    var content_box = screen.firstChild;
+        content_box.style.height = '';
+        font_size = content_box.style.fontSize;
+        font_size = parseFloat( font_size.match( /[\d\.]+/ )[0] );
+        font_size *= 100;
+        font_size = Math.round( font_size );
+    if( font_size )
+    {
+        if( content_box.offsetHeight > screen.offsetHeight )
+        {
+            while( content_box.offsetHeight > screen.offsetHeight )
+            {
+                font_size -= 5;
+                content_box.style.fontSize = ( font_size/100 ) + 'px';
+            }
+        }
+        else
+        {
+            while( content_box.offsetHeight < screen.offsetHeight )
+            {
+                font_size += 5;
+                content_box.style.fontSize = (font_size/100) + 'px';
+            }
+            font_size -= 5;
+            content_box.style.fontSize = (font_size/100) + 'px';
+        }
+    }
+    content_box.style.height = '100%';
+}
+
+function get_location( x,y )
+{
+    var board = document.getElementById('board');
+    var size = (board.offsetWidth > board.offsetHeight) ? board.offsetWidth : board.offsetHeight;
+    var unit = size * .01;
+    return( new Array((x * unit), (y * unit)) );
+}
+
+function get_length( l )
+{
+    var board = document.getElementById('board');
+    var size = (board.offsetWidth > board.offsetHeight) ? board.offsetWidth : board.offsetHeight;
+    var unit = size * .01;
+    return( l * unit );
+}
+
+var wall_count = 0;
+
+function add_wall( x, y, thickness, width, height )
+{
+    var board = document.getElementById('board');
+    var wall = document.createElement('DIV');
+    wall.className = 'wall';
+    wall.id = 'wall' + wall_count++;
+
+    var boundary = get_location( x,y );
+
+    wall.style.left     = boundary[0] + 'px';
+    wall.style.top      = boundary[1] + 'px';
+    wall.style.width    = ( width ) ? get_length(width) + 'px' : get_length(thickness) + 'px';
+    wall.style.height   = ( height ) ? get_length(height) + 'px' : get_length(thickness) + 'px';
+    board.appendChild( wall );
+    boundary[2] = boundary[0] + wall.offsetWidth;
+    boundary[3] = boundary[1] + wall.offsetHeight;
+    boundary[6] = wall;
+    boundaries.push( boundary );
+    sprites_all.push( boundary );
+}
+
+var torch_count = 0;
+
+function add_torch( x, y, p )
+{
+    var coords = get_location( x,y );
+    var board = document.getElementById('board');
+    var size = ( board.offsetHeight > board.offsetWidth ) ? (board.offsetHeight * 2) : (board.offsetWidth * 2);
+    var torch = document.createElement('DIV');
+    var boundary = new Array();
+    boundary[0] = coords[0] - ( size / 2 );
+    boundary[1] = coords[1] - ( size / 2 );
+    boundary[2] = boundary[0] + size;
+    boundary[3] = boundary[1] + size;
+    boundary[6] = torch;
+    torch.id = 'torch' + torch_count;
+    torch.style.width = size + 'px';
+    torch.style.height = size + 'px';
+    torch.style.left = boundary[0];
+    torch.style.top = boundary[1];
+    torch.className = 'torch';
+    board.appendChild( torch );
+    torches[p] = boundary;
+    sprites_all.push( boundary );
+}
+
+var player_count = 0;
+
+function add_player( x, y )
+{
+    //add_torch( x, y, player_count );
+
+    var boundary = get_location( x,y );
+
+    var player = document.createElement('DIV');
+    player.id = 'player' + player_count++;
+    player.style.left = boundary[0] + 'px';
+    player.style.top = boundary[1] + 'px';
+    player.style.width = get_length(2.5) + 'px';
+    player.style.height = get_length(3) + 'px';
+    document.getElementById('board').appendChild(player);
+
+    boundary[2] = boundary[0] + get_length(2.5);
+    boundary[3] = boundary[1] + get_length(3);
+    boundary[4] = 0;
+    boundary[5] = 0;
+    boundary[6] = player;
+
+    players.push( boundary );
+    sprites_all.push( boundary );
+}
+
+var hit_count = 0;
+
+function add_hit( x, y, width, height, action, frame )
+{
+    var board = document.getElementById('board');
+    var boundary = get_location( x,y );
+
+    boundary[2] = boundary[0] + get_length(width);
+    boundary[3] = boundary[1] + get_length(height);
+
+    var hit = document.createElement('DIV');
+    hit.className       = 'hit';
+    hit.id              = 'hit' + hit_count++;
+    hit.setAttribute( "frame", frame );
+    hit.style.left      = boundary[0] + 'px';
+    hit.style.top       = boundary[1] + 'px';
+    hit.style.width     = get_length(width) + 'px';
+    hit.style.height    = get_length(height) + 'px';
+
+    board.appendChild( hit );
+    boundary[4] = action;
+    boundary[5] = false;
+    boundary[6] = hit;
+    hits.push( boundary );
+    sprites_all.push( boundary );
+}
+
+function blow_hit( hit )
+{
+    hit.setAttribute( "frame", "1" );
+    score -= 10;
+    audio.stop( 'effect' );
+    audio.play( 'effect', 'explode.mp3' );
+    var board = document.getElementById('board');
+    var width = board.offsetWidth;
+    var height = board.offsetHeight;
+    var x = document.createElement('DIV');
+    x.className = 'hit';
+    x.innerHTML = 'X';
+    x.style.whiteSpace = 'nowrap';
+    x.style.width = '2px';
+    x.style.height = '2px';
+    x.style.fontFamily = 'sans-serif';
+    x.style.fontWeight = '800';
+    x.style.textAlign = 'center';
+    x.style.verticalAlign = 'middle';
+    x.style.padding = '0px';
+    x.style.paddingTop = '-1em';
+    x.style.margin = '0px';
+    x.style.left = (width/2) - 1;
+    x.style.top = (height/2) - 1;
+    x.style.opacity = 1;
+    x.style.background = 'transparent';
+    x.style.color = 'red';
+
+    board.appendChild(x);
+
+    var explode = document.createElement('DIV');
+    explode.className = 'hit';
+    explode.innerHTML = '';
+    explode.style.backgroundColor = 'red';
+    explode.style.width = '4px';
+    explode.style.height = '6px';
+    explode.style.left = parseFloat( hit.style.left.match( /[\d\.]+/ )[0] ) + (hit.offsetWidth/2) - 2;
+    explode.style.top = parseFloat( hit.style.top.match( /[\d\.]+/ )[0] ) + (hit.offsetHeight/2) - 3;
+    explode.style.opacity = 1;
+    explode.style.background = 'transparent';
+    explode.style.backgroundImage = 'url(explode.svg)';
+    explode.style.backgroundPosition = 'center';
+    explode.style.backgroundSize = 'contain';
+    explode.style.color = 'red';
+    explode.style.color = 'red';
+    explode.style.zIndex = '300';
+
+    board.appendChild(explode);
+
+
+    zoom(x, board);
+    zoom(explode, hit);
+
+
+}
+
+function zoom( object, boundary )
+{
+    board = object.parentNode;
+
+    var max_size = ( boundary.offsetHeight < boundary.offsetWidth ) ? boundary.offsetWidth : boundary.offsetHeight;
+    var increment = max_size/20;
+
+    object.style.left = parseFloat( object.style.left.match( /[-\d\.]+/ )[0] ) - (increment/2) + 'px';
+    object.style.top  = parseFloat( object.style.top.match( /[-\d\.]+/ )[0] ) - (increment * .75) + 'px';
+    object.style.width = (object.offsetWidth + increment) + 'px';
+    object.style.fontSize = object.offsetHeight + 'px';
+    object.style.height = (object.offsetHeight + increment) + 'px';
+    object.style.opacity -= .02;
+
+    if( object.offsetHeight < boundary.offsetHeight ||
+        object.offsetWidth < boundary.offsetWidth )
+    {
+        setTimeout( function () { zoom(object, boundary) }, 30 );
+    }
+    else
+    {
+        board.removeChild( object );
+    }
+
+}
+
+function blow_congrats( hit )
+{
+    if( score == 100 )
+        console.log( 'congratulations' );
+    else
+        console.log( 'you made it, but what about the rest?' );
+    state.setState( 'game', FINISHED );
+}
+
+function check_hit()
+{
+    let collide = false;
+
+    for( var i = 0; i < hits.length; i++ )
+    {
+        if( collide ) break;
+        if( hits[i][5] ) continue;
+        if( 
+            (
+                ( players[current_player][0] ) >= hits[i][0] &&
+                ( players[current_player][0] ) <= hits[i][2] &&
+                ( players[current_player][1] ) >= hits[i][1] &&
+                ( players[current_player][1] ) <= hits[i][3]
+            ) || 
+            (
+                ( players[current_player][2] ) >= hits[i][0] &&
+                ( players[current_player][2] ) <= hits[i][2] &&
+                ( players[current_player][3] ) >= hits[i][1] &&
+                ( players[current_player][3] ) <= hits[i][3]
+            ) || 
+            (
+                ( players[current_player][2] ) >= hits[i][0] &&
+                ( players[current_player][0] ) <= hits[i][2] &&
+                ( players[current_player][3] ) >= hits[i][1] &&
+                ( players[current_player][1] ) <= hits[i][3]
+            ) || 
+            (
+                ( players[current_player][0] ) >= hits[i][0] &&
+                ( players[current_player][2] ) <= hits[i][2] &&
+                ( players[current_player][1] ) >= hits[i][1] &&
+                ( players[current_player][3] ) <= hits[i][3]
+            )
+        )
+        {
+            eval( hits[i][4] + '(hits[i][6])' ); 
+            hits[i][5] = true;
+        }
+    }
+
+}
+    
+function setKeyStatus( e )
+{
+    if( e && e.repeat ){ return;} 
+    state.setState( 'move', false );
+    if( state.self.game != RUNNING ) return;
+    if( e.type == 'keyup' ) return;
+
+    switch ( e.key )
+    {
+        case 'w':
+        case 'Up':
+            state.setState( 'move', 'up' );
+            break;
+        case 's':
+        case 'Down':
+            state.setState( 'move', 'dn' );
+            break;
+        case 'a':
+        case 'Left':
+            state.setState( 'move', 'lt' );
+            break;
+        case 'd':
+        case 'Right':
+            state.setState( 'move', 'rt' );
+            break;
+        default:
+            state.setState( 'move', false );
+    }
+}
+
+function check_boundaries( change_x, change_y )
+{
+    let collide = false;
+
+    if( ( players[current_player][0] + change_x ) < boundaries[0][0] ||
+        ( players[current_player][2] + change_x ) > boundaries[0][2] ||
+        ( players[current_player][1] + change_y ) < boundaries[0][1] ||
+        ( players[current_player][3] + change_y ) > boundaries[0][3] )
+    {
+        collide = true;   
+    }    
+
+    for( var i = 1; i < boundaries.length; i++ )
+    {
+        if( collide ) break;
+        if( 
+            (
+                ( players[current_player][0] + change_x ) >= boundaries[i][0] &&
+                ( players[current_player][0] + change_x ) <= boundaries[i][2] &&
+                ( players[current_player][1] + change_y ) >= boundaries[i][1] &&
+                ( players[current_player][1] + change_y ) <= boundaries[i][3]
+            ) || 
+            (
+                ( players[current_player][2] + change_x ) >= boundaries[i][0] &&
+                ( players[current_player][2] + change_x ) <= boundaries[i][2] &&
+                ( players[current_player][3] + change_y ) >= boundaries[i][1] &&
+                ( players[current_player][3] + change_y ) <= boundaries[i][3]
+            ) || 
+            (
+                ( players[current_player][2] + change_x ) >= boundaries[i][0] &&
+                ( players[current_player][0] + change_x ) <= boundaries[i][2] &&
+                ( players[current_player][3] + change_y ) >= boundaries[i][1] &&
+                ( players[current_player][1] + change_y ) <= boundaries[i][3]
+            ) || 
+            (
+                ( players[current_player][0] + change_x ) >= boundaries[i][0] &&
+                ( players[current_player][2] + change_x ) <= boundaries[i][2] &&
+                ( players[current_player][1] + change_y ) >= boundaries[i][1] &&
+                ( players[current_player][3] + change_y ) <= boundaries[i][3]
+            )
+        )
+        {
+            collide = true;   
+        }
+    }
+    return ( !collide );
+}
+
+function reset()
+{
+    score = 100;
+    var coords = get_location(8, 50);
+    for( var i = 0; i < players.length; i++ )
+    {
+        players[i][0] = coords[0];
+        players[i][1] = coords[1];
+        players[i][2] = coords[0] + players[i][6].offsetWidth;
+        players[i][3] = coords[1] + players[i][6].offsetHeight;
+        players[i][6].style.left = coords[0] + 'px';
+        players[i][6].style.top = coords[1] + 'px';
+    }
+    for( var i = 0; i < hits.length; i++ )
+    {
+        hits[i][5] = false;
+        if( hits[i][6].getAttribute( "frame" )  == 1 )
+            hits[i][6].setAttribute( "frame", "0" );
+    }
+    state.setState( 'game', NOT_STARTED );
+}
+
+var lastState = state.self.game;
+
+function update()
+{
+    if( state.self.game == REPLAY )
+    {
+        reset();
+    }
+    for( var i = 0; i < screens.length; i++ )
+    {
+        if( screens[i][1] == state.self.game )
+        {
+            if( screens[i][0].style.visibility == 'hidden' )
+            {
+                screens[i][0].style.visibility = 'visible';
+                fixAspectScreen( screens[i][0] );
+                if( screens[i][2] ) audio.play( screens[i][0].id, screens[i][2] );
+            }
+        }
+        else
+        {
+            if( screens[i][0].style.visibility != 'hidden' )
+            {
+                screens[i][0].style.visibility = 'hidden';
+                audio.stop( screens[i][0].id );
+            }
+        }
+    }
+    for( var i = 0; i < banners.length; i++ )
+    {
+        if( banners[i][1] == state.self.game )
+        {
+            banners[i][0].style.display = 'inline-block';
+            banners[i][0].style.height = get_length(3) + 'px';
+            banners[i][0].style.fontSize = get_length(2) + 'px';
+        }
+        else
+        {
+            banners[i][0].style.display = 'none';
+        }
+    }
+
+    if( state.self.game == RUNNING )
+    {
+        var dpad = document.getElementById('dpad');
+        if( dpad )
+        {
+            dpad.style.left = (document.getElementById('board').clientWidth - dpad.offsetWidth - 18) + 'px';
+            dpad.style.top = (document.getElementById('board').clientHeight - dpad.offsetHeight - 14) + 'px';
+        }
+        var player = document.getElementById('player' + current_player);
+
+        let change_y = 0;
+        let change_x = 0;
+
+
+        if( state.self['move'] == 'up' )
+            change_y -= move_inc;
+        if( state.self['move'] == 'dn' )
+            change_y += move_inc;
+        if( state.self['move'] == 'lt' )
+            change_x -= move_inc;
+        if( state.self['move'] == 'rt' )
+            change_x += move_inc;
+
+        if( check_boundaries( change_x, change_y ) )
+        {
+            players[current_player][0] += change_x;
+            players[current_player][1] += change_y;
+            players[current_player][2] += change_x;
+            players[current_player][3] += change_y;
+            if( torches[current_player] )
+            {
+                torches[current_player][0] += change_x;
+                torches[current_player][1] += change_y;
+                torches[current_player][2] += change_x;
+                torches[current_player][3] += change_y;
+            }
+        }
+        check_hit();
+
+        player.style.left = players[current_player][0];
+        player.style.top  = players[current_player][1];
+        if( torches[current_player] )
+        {
+            var torch = document.getElementById('torch' + current_player);
+
+            torch.style.left = torches[current_player][0];
+            torch.style.top  = torches[current_player][1];
+        }
+
+    }
+    else
+    {
+        if( state.self.move )
+            setKeyStatus(event)
+    }
+    lastState = state.self.game 
+    setTimeout( update, 30);
+}
+
+var inFixAspect = false;
+var screen_resize_timers = {};
+
+function fixAspect()
+{
+    if( inFixAspect ) return;
+    var screen = document.getElementById('screen');
+    var board = document.getElementById('board');
+    if( !board ) return;
+    var new_screen_width = screen.clientWidth;
+    var new_screen_height = screen.clientHeight;
+    var new_board_width = new_screen_width;
+    var new_board_height = 0;
+    if( new_board_width * aspect > new_screen_height )
+    {
+        new_board_height = new_screen_height - 8;
+        new_board_width = ( new_board_height / aspect );
+    }
+    else
+    {
+        new_board_height = (new_board_width * aspect) - 8;
+    }
+    var change_ratio = new_board_width / board.offsetWidth;
+    inFixAspect = true;
+
+    for( var i = 0; i < sprites_all.length; i++ )
+    {
+        sprites_all[i][0] *= change_ratio;
+        sprites_all[i][1] *= change_ratio;
+        sprites_all[i][2] *= change_ratio;
+        sprites_all[i][3] *= change_ratio;
+
+        if( sprites_all[i][6] )
+        {
+            sprites_all[i][6].style.left = sprites_all[i][0] + 'px';
+            sprites_all[i][6].style.top = sprites_all[i][1] + 'px';
+            if( i == 0 )
+            {
+                sprites_all[i][6].style.width = (sprites_all[i][2] - sprites_all[i][0]) - 8 + 'px';
+            }
+            else
+            {
+                sprites_all[i][6].style.width = (sprites_all[i][2] - sprites_all[i][0]) + 'px';
+            }
+            sprites_all[i][6].style.height = (sprites_all[i][3] - sprites_all[i][1]) + 'px';
+        }
+    }
+
+    for( var i = 0; i < screens.length; i++ )
+    {
+        if( screens[i][0].style.visibility == 'visible' )
+        {
+            var id = screens[i][0].id;
+            var screen_now = screens[i][0];
+            if( screen_resize_timers[id] ) { clearTimeout( screen_resize_timers[id] ); }
+            screen_resize_timers[id] = setTimeout( function(){ fixAspectScreen( screen_now ) }, 100 ); 
+        }
+    }
+
+    if( screen_resize_timers['moveinc'] ) { clearTimeout( screen_resize_timers['moveinc'] ); }
+    screen_resize_timers['moveinc'] = setTimeout( function(){ fixMoveInc() }, 100 );
+
+    inFixAspect = false;
+}
+
+</script>
+<body onload='start_loop();' onkeydown="setKeyStatus(event);" onkeyup="setKeyStatus(event);" onresize="fixAspect()">
+    <div id='screen'>
+    </div>
+    <!-- <audio controls muted id='narration'></audio>
+    <audio controls muted id='effect'></audio> -->
+</body>
+</html>
