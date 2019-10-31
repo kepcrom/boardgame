@@ -1,6 +1,7 @@
 <html>
     <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/> <!--320-->
+        <script src="data.js"></script>
     </head>
 <style>
 body {
@@ -178,11 +179,6 @@ var sprites_all = new Array();
 var screens = new Array();
 var banners = new Array();
 
-const start_content = '<h3>A Mindset for Safety</h3><p>ExxonMobil Production Company (EMPC) wants to ensure that you remain safe while performing hot work activities.  It is your responsibility to follow the hot work safe practices as described in this training module.</p><p>To ensure your safety, you must take specific steps before, during, and after hot work activities to prevent flammable materials from coming into contact with flames or sources of heat.</p><p>This game represents the mindset you need to have during hot work.  Using your keyboard, move the torch through the maze without touching any of the hazardous materials.</p><button onclick="state.setState( \'game\', RUNNING )" value="start">Start</button>';
-const completed_content = '<h3>Good Work!</h3><p>During hot work activities, you must keep control over the work site and constantly watch out for unsafe conditions.</p><p>Avoiding fire is your main concern.</p><p><i>Click on the Next button to continue the module.</i></p><button onclick="state.setState(\'game\', REPLAY )">REPLAY</button>';
-const pc_instructions = '<b>Use the appropriate keys on the keyboard to move through the maze.</b>';
-const mobile_instructions = '<b>Use the direction pad to move through the maze.</b>';
-
 const NOT_STARTED = 1;
 const RUNNING = 2;
 const FINISHED = 3;
@@ -301,22 +297,24 @@ function start_loop()
         add_hit( 5, 43, 20, 14, '', 3 );
         add_banner( pc_instructions, RUNNING );
     }
- 
-    add_screen('bg_notstarted.jpg', start_content, NOT_STARTED, true, '2A_450.mp3' );
-    add_screen('bg_notstarted.jpg', completed_content, FINISHED, false, '2C_450.mp3' );
+
+    // Add SCREENS from the Data File
+    for( var i = 0; i < screens_data.length; i++ )
+    {
+        add_screen(screens_data[i]['background'], screens_data[i]['content'], screens_data[i]['mode'], screens_data[i]['show'], screens_data[i]['audio'] );
+    }
+    //add_screen('bg_notstarted.jpg', start_content, NOT_STARTED, true, '2A_450.mp3' );
+    //add_screen('bg_notstarted.jpg', completed_content, FINISHED, false, '2C_450.mp3' );
     add_player( 8, 40 );
-    add_wall(  0,  3, 1.25, 100,  0 );
-    add_wall( 14, 18, 1.25,   0, 80 );
-    add_wall( 28,  3, 1.25,   0, 14 );
-    add_wall( 28, 17, 1.25,  14,  0 );
-    add_wall( 56, 17, 1.25,  14,  0 );
-    add_wall( 56, 17, 1.25,   0, 87 );
-    add_wall( 28, 31, 1.25,  28,  0 );
-    add_wall( 28, 31, 1.25,   0, 15 );
-    add_wall( 42, 43, 1.25,   0, 67 );
-    add_wall( 70, 29, 1.25,  14,  0 );
-    add_wall( 70, 43, 1.25,   0, 57 );
-    add_wall( 84,  3, 1.25,   0, 42 );
+
+    // Add WALLS from the Data File
+    for( var i = 0; i < walls_data.length; i++ )
+    {
+        with( walls_data[i] )
+        {
+            add_wall( posx, posy, thickness, lengthx, lengthy );
+        }   
+    }
 
     add_hit(  1,  5, 4, 6, 'blow_hit', 0 ); // 00
     add_hit( 13, 13, 4, 6, 'blow_hit', 0 ); // 01
@@ -461,7 +459,14 @@ function add_screen( background, content, mode, show, audio )
     screen.style.height = '100%';
     screen.style.zIndex = screen_index;
     screen.style.visibility = ( show ) ? 'visible' : 'hidden';
-    screen.style.backgroundImage = 'url("'+background+'")';
+    if( background.match( /^#/ ) )
+    {
+        screen.style.backgroundColor = background;
+    }
+    else
+    {
+        screen.style.backgroundImage = 'url("'+background+'")';
+    }
     board.appendChild(screen);
     if( content )
     {
